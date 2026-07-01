@@ -19,15 +19,20 @@
 package org.apache.paimon.trino;
 
 import org.apache.paimon.data.BinaryString;
+import org.apache.paimon.data.Blob;
 import org.apache.paimon.data.Decimal;
 import org.apache.paimon.data.InternalArray;
 import org.apache.paimon.data.InternalMap;
 import org.apache.paimon.data.InternalRow;
+import org.apache.paimon.data.InternalVector;
 import org.apache.paimon.data.Timestamp;
+import org.apache.paimon.data.variant.Variant;
 import org.apache.paimon.types.RowKind;
 
 import io.airlift.slice.Slice;
 import io.trino.spi.Page;
+import io.trino.spi.block.Block;
+import io.trino.spi.block.IntArrayBlock;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Int128;
 import io.trino.spi.type.TypeUtils;
@@ -44,6 +49,7 @@ import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TimestampType.TIMESTAMP_MICROS;
+import static io.trino.spi.type.TinyintType.TINYINT;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static org.apache.paimon.shade.guava30.com.google.common.base.Verify.verify;
 
@@ -86,8 +92,7 @@ public class TrinoRow implements InternalRow, Serializable {
 
     @Override
     public byte getByte(int i) {
-        Slice slice = (Slice) TypeUtils.readNativeValue(VARBINARY, singlePage.getBlock(i), 0);
-        return slice.getByte(0);
+        return (byte) (long) TypeUtils.readNativeValue(TINYINT, singlePage.getBlock(i), 0);
     }
 
     @Override
@@ -101,7 +106,13 @@ public class TrinoRow implements InternalRow, Serializable {
 
     @Override
     public int getInt(int i) {
-        long value = (long) TypeUtils.readNativeValue(INTEGER, singlePage.getBlock(i), 0);
+        Block block = singlePage.getBlock(i);
+        long value;
+        if (block.getUnderlyingValueBlock() instanceof IntArrayBlock) {
+            value = (long) TypeUtils.readNativeValue(INTEGER, block, 0);
+        } else {
+            value = BIGINT.getLong(block, 0);
+        }
         if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("Value out of range for int: " + value);
         }
@@ -162,20 +173,31 @@ public class TrinoRow implements InternalRow, Serializable {
 
     @Override
     public InternalArray getArray(int i) {
-        // todo
-        //            singlePage.getBlock(i).getChildren()
         return null;
     }
 
     @Override
     public InternalMap getMap(int i) {
-        // todo
         return null;
     }
 
     @Override
     public InternalRow getRow(int i, int i1) {
-        // todo
+        return null;
+    }
+
+    @Override
+    public Variant getVariant(int pos) {
+        return null;
+    }
+
+    @Override
+    public Blob getBlob(int pos) {
+        return null;
+    }
+
+    @Override
+    public InternalVector getVector(int pos) {
         return null;
     }
 }

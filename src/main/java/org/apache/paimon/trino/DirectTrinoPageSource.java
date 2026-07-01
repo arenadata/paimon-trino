@@ -18,8 +18,8 @@
 
 package org.apache.paimon.trino;
 
-import io.trino.spi.Page;
 import io.trino.spi.connector.ConnectorPageSource;
+import io.trino.spi.connector.SourcePage;
 import io.trino.spi.metrics.Metrics;
 
 import java.io.IOException;
@@ -54,18 +54,18 @@ public class DirectTrinoPageSource implements ConnectorPageSource {
     }
 
     @Override
-    public Page getNextPage() {
+    public SourcePage getNextSourcePage() {
         try {
             if (current == null) {
                 return null;
             }
-            Page dataPage = current.getNextPage();
-            if (dataPage == null) {
+            SourcePage sourcePage = current.getNextSourcePage();
+            if (sourcePage == null) {
                 advance();
-                return getNextPage();
+                return getNextSourcePage();
             }
 
-            return dataPage;
+            return sourcePage;
         } catch (RuntimeException e) {
             throw new RuntimeException(e);
         }

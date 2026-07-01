@@ -73,11 +73,6 @@ public class TrinoSplit implements ConnectorSplit {
     }
 
     @Override
-    public Object getInfo() {
-        return Collections.emptyMap();
-    }
-
-    @Override
     public SplitWeight getSplitWeight() {
         return SplitWeight.fromProportion(weight);
     }
