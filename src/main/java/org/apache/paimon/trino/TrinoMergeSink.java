@@ -28,6 +28,7 @@ import io.trino.spi.connector.MergePage;
 
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.IntStream;
 
 /** Trino {@link ConnectorMergeSink}. */
 public class TrinoMergeSink implements ConnectorMergeSink {
@@ -45,7 +46,15 @@ public class TrinoMergeSink implements ConnectorMergeSink {
         MergePage mergePage = MergePage.createDeleteAndInsertPages(page, dataColumnCount);
         mergePage
                 .getDeletionsPage()
-                .ifPresent(deletePage -> pageSink.writePage(deletePage, RowKind.DELETE));
+                .ifPresent(
+                        deletePage -> {
+                            // MergePage includes row_id as last column; Paimon only needs data
+                            // columns
+                            Page dataOnly =
+                                    deletePage.getColumns(
+                                            IntStream.range(0, dataColumnCount).toArray());
+                            pageSink.writePage(dataOnly, RowKind.DELETE);
+                        });
         mergePage
                 .getInsertionsPage()
                 .ifPresent(insertPage -> pageSink.writePage(insertPage, RowKind.INSERT));
