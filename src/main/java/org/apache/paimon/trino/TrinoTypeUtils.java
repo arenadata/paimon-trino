@@ -232,10 +232,13 @@ public class TrinoTypeUtils {
                 if (length.isPresent()) {
                     return DataTypes.VARCHAR(
                             Math.min(
-                                    VarcharType.MAX_LENGTH,
+                                    io.trino.spi.type.VarcharType.MAX_LENGTH,
                                     ((VarcharType) trinoType).getBoundedLength()));
                 }
-                return DataTypes.VARCHAR(VarcharType.MAX_LENGTH);
+
+                // io.trino.spi.type.VarcharType.MAX_LENGTH is INTEGER.MAX_VALUE-1. Because of this
+                // conversion between VARCHAR(length) <-> STRING never happen
+                return DataTypes.VARCHAR(Integer.MAX_VALUE);
             } else if (trinoType instanceof io.trino.spi.type.BooleanType) {
                 return DataTypes.BOOLEAN();
             } else if (trinoType instanceof VarbinaryType) {
