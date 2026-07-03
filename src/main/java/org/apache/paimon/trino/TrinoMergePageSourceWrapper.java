@@ -81,7 +81,7 @@ public class TrinoMergePageSourceWrapper implements ConnectorPageSource {
         }
         newBlocks[nextPage.getChannelCount()] =
                 RowBlock.fromNotNullSuppressedFieldBlocks(
-                        rowCount, Optional.of(new boolean[fieldToIndex.size()]), rowIdBlocks);
+                        rowCount, Optional.of(new boolean[rowCount]), rowIdBlocks);
 
         return SourcePage.create(new Page(rowCount, newBlocks));
     }
