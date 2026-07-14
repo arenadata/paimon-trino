@@ -48,7 +48,7 @@ import io.trino.orc.OrcReader;
 import io.trino.orc.OrcReaderOptions;
 import io.trino.orc.OrcRecordReader;
 import io.trino.orc.TupleDomainOrcPredicate;
-import io.trino.plugin.hive.FileFormatDataSourceStats;
+import io.trino.plugin.base.metrics.FileFormatDataSourceStats;
 import io.trino.plugin.hive.orc.OrcPageSource;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPageSource;
@@ -194,7 +194,6 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                     List<RawFile> files = optionalRawFiles.orElseThrow();
                     LinkedList<ConnectorPageSource> sources = new LinkedList<>();
 
-                    // if file index exists, do the filter.
                     for (int i = 0; i < files.size(); i++) {
                         RawFile rawFile = files.get(i);
                         if (indexFiles.isPresent()) {
@@ -211,24 +210,30 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                                 }
                             }
                         }
+                        List<String> fileReadFields =
+                                fileStoreTable.schema().id() == rawFile.schemaId()
+                                        ? projectedFields
+                                        : schemaEvolutionFieldNames(
+                                                projectedFields,
+                                                rowType.getFields(),
+                                                schemaManager.schema(rawFile.schemaId()).fields());
+                        if (fileReadFields.contains(null)) {
+                            return createLegacyPageSource(
+                                    table,
+                                    paimonFilter,
+                                    fieldNames,
+                                    projectedFields,
+                                    paimonSplit,
+                                    columns,
+                                    limit);
+                        }
+
                         ConnectorPageSource source =
                                 createDataPageSource(
                                         rawFile.format(),
                                         fileSystem.newInputFile(Location.of(rawFile.path())),
                                         fileStoreTable.coreOptions(),
-                                        // map table column name to data column
-                                        // name, if column does not exist in
-                                        // data columns, set it to null
-                                        // columns those set to null will generate
-                                        // a null vector in orc page
-                                        fileStoreTable.schema().id() == rawFile.schemaId()
-                                                ? projectedFields
-                                                : schemaEvolutionFieldNames(
-                                                        projectedFields,
-                                                        rowType.getFields(),
-                                                        schemaManager
-                                                                .schema(rawFile.schemaId())
-                                                                .fields()),
+                                        fileReadFields,
                                         type,
                                         orderDomains(projectedFields, filter));
 
@@ -256,26 +261,44 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                     throw new RuntimeException(e);
                 }
             } else {
-                int[] columnIndex =
-                        projectedFields.stream().mapToInt(fieldNames::indexOf).toArray();
-
-                // old read way
-                ReadBuilder read = table.newReadBuilder();
-                paimonFilter.ifPresent(read::withFilter);
-
-                if (!fieldNames.equals(projectedFields)) {
-                    read.withProjection(columnIndex);
-                }
-
-                return new TrinoPageSource(
-                        read.newRead().executeFilter().createReader(paimonSplit), columns, limit);
+                return createLegacyPageSource(
+                        table,
+                        paimonFilter,
+                        fieldNames,
+                        projectedFields,
+                        paimonSplit,
+                        columns,
+                        limit);
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    // make domains(filters) to be ordered by projected fields' order.
+    private ConnectorPageSource createLegacyPageSource(
+            Table table,
+            Optional<Predicate> paimonFilter,
+            List<String> fieldNames,
+            List<String> projectedFields,
+            Split paimonSplit,
+            List<ColumnHandle> columns,
+            OptionalLong limit) {
+        int[] columnIndex = projectedFields.stream().mapToInt(fieldNames::indexOf).toArray();
+        ReadBuilder read = table.newReadBuilder();
+        paimonFilter.ifPresent(read::withFilter);
+
+        if (!fieldNames.equals(projectedFields)) {
+            read.withProjection(columnIndex);
+        }
+
+        try {
+            return new TrinoPageSource(
+                    read.newRead().executeFilter().createReader(paimonSplit), columns, limit);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private List<Domain> orderDomains(
             List<String> projectedFields, TupleDomain<TrinoColumnHandle> filter) {
         Optional<Map<TrinoColumnHandle, Domain>> optionalFilter = filter.getDomains();
@@ -294,8 +317,6 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
         return optionalRawFiles.isPresent() && canUseTrinoPageSource(optionalRawFiles.get());
     }
 
-    // only support orc yet.
-    // TODO: support parquet and avro
     private boolean canUseTrinoPageSource(List<RawFile> rawFiles) {
         for (RawFile rawFile : rawFiles) {
             if (!rawFile.format().equals("orc")) {
@@ -305,7 +326,6 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
         return true;
     }
 
-    // map the table schema column names to data schema column names
     private List<String> schemaEvolutionFieldNames(
             List<String> fieldNames, List<DataField> tableFields, List<DataField> dataFields) {
 
@@ -326,7 +346,6 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
     private ConnectorPageSource createDataPageSource(
             String format,
             TrinoInputFile inputFile,
-            // TODO construct read option by core-options
             CoreOptions coreOptions,
             List<String> columns,
             List<Type> types,
@@ -336,11 +355,7 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                 {
                     return createOrcDataPageSource(
                             inputFile,
-                            // TODO: pass options from catalog configuration
                             new OrcReaderOptions()
-                                    // Default tiny stripe size 8 M is too big for paimon.
-                                    // Cache stripe will cause more read (I want to read one column,
-                                    // but not the whole stripe)
                                     .withTinyStripeThreshold(
                                             DataSize.of(4, DataSize.Unit.KILOBYTE)),
                             columns,
@@ -349,12 +364,10 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                 }
             case "parquet":
                 {
-                    // todo
                     throw new RuntimeException("Unsupport file format: " + format);
                 }
             case "avro":
                 {
-                    // todo
                     throw new RuntimeException("Unsupport file format: " + format);
                 }
             default:
@@ -381,27 +394,23 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
             fileColumns.forEach(column -> fieldsMap.put(column.getColumnName(), column));
             TupleDomainOrcPredicate.TupleDomainOrcPredicateBuilder predicateBuilder =
                     TupleDomainOrcPredicate.builder();
-            List<OrcPageSource.ColumnAdaptation> columnAdaptations = new ArrayList<>();
             List<OrcColumn> fileReadColumns = new ArrayList<>(columns.size());
             List<Type> fileReadTypes = new ArrayList<>(columns.size());
 
             for (int i = 0; i < columns.size(); i++) {
-                if (columns.get(i) != null) {
-                    // column exists
-                    columnAdaptations.add(
-                            OrcPageSource.ColumnAdaptation.sourceColumn(fileReadColumns.size()));
-                    OrcColumn orcColumn = fieldsMap.get(columns.get(i));
-                    if (orcColumn == null) {
-                        throw new RuntimeException(
-                                "Column " + columns.get(i) + " does not exist in orc file.");
-                    }
-                    fileReadColumns.add(orcColumn);
-                    fileReadTypes.add(types.get(i));
-                    if (domains.get(i) != null) {
-                        predicateBuilder.addColumn(orcColumn.getColumnId(), domains.get(i));
-                    }
-                } else {
-                    columnAdaptations.add(OrcPageSource.ColumnAdaptation.nullColumn(types.get(i)));
+                if (columns.get(i) == null) {
+                    throw new RuntimeException(
+                            "Schema evolution with missing columns in ORC raw reader is unsupported.");
+                }
+                OrcColumn orcColumn = fieldsMap.get(columns.get(i));
+                if (orcColumn == null) {
+                    throw new RuntimeException(
+                            "Column " + columns.get(i) + " does not exist in orc file.");
+                }
+                fileReadColumns.add(orcColumn);
+                fileReadTypes.add(types.get(i));
+                if (domains.get(i) != null) {
+                    predicateBuilder.addColumn(orcColumn.getColumnId(), domains.get(i));
                 }
             }
 
@@ -410,6 +419,7 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                     reader.createRecordReader(
                             fileReadColumns,
                             fileReadTypes,
+                            false,
                             predicateBuilder.build(),
                             DateTimeZone.UTC,
                             memoryUsage,
@@ -418,7 +428,6 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
 
             return new OrcPageSource(
                     recordReader,
-                    columnAdaptations,
                     orcDataSource,
                     Optional.empty(),
                     Optional.empty(),

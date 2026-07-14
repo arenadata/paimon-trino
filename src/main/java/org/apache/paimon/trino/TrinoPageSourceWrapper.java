@@ -23,6 +23,7 @@ import org.apache.paimon.deletionvectors.DeletionVector;
 
 import io.trino.spi.Page;
 import io.trino.spi.connector.ConnectorPageSource;
+import io.trino.spi.connector.SourcePage;
 import io.trino.spi.metrics.Metrics;
 
 import java.io.IOException;
@@ -64,20 +65,24 @@ public class TrinoPageSourceWrapper implements ConnectorPageSource {
     }
 
     @Override
-    public Page getNextPage() {
+    public SourcePage getNextSourcePage() {
         int startPosition = (int) source.getCompletedPositions().orElseThrow();
-        Page next = source.getNextPage();
-        if (next == null) {
-            return next;
+        SourcePage sourcePage = source.getNextSourcePage();
+        if (sourcePage == null) {
+            return null;
         }
 
+        Page next = sourcePage.getPage();
         int pageCount = next.getPositionCount();
 
-        return deletionVector
-                .map(
-                        deletionVector ->
-                                convertToRetained(next, deletionVector, startPosition, pageCount))
-                .orElse(next);
+        Page result =
+                deletionVector
+                        .map(
+                                deletionVector ->
+                                        convertToRetained(
+                                                next, deletionVector, startPosition, pageCount))
+                        .orElse(next);
+        return SourcePage.create(result);
     }
 
     @VisibleForTesting

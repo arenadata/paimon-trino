@@ -91,7 +91,7 @@ public class TrinoRowTest {
         assertThat(trinoRow.getRowKind()).isEqualTo(RowKind.INSERT);
         assertThat(trinoRow.isNullAt(0)).isEqualTo(true);
         assertThat(trinoRow.getBoolean(1)).isEqualTo(false);
-        assertThat(trinoRow.getByte(2)).isEqualTo((byte) 22);
+        assertThat(trinoRow.getBinary(2)).isEqualTo(new byte[] {22});
         assertThat(trinoRow.getShort(3)).isEqualTo((short) 356);
         assertThat(trinoRow.getInt(4)).isEqualTo(4);
         assertThat(trinoRow.getLong(5)).isEqualTo(23567222L);
