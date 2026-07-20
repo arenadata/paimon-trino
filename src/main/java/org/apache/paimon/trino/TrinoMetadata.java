@@ -63,8 +63,10 @@ import io.trino.spi.connector.ProjectionApplicationResult;
 import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.RowChangeParadigm;
 import io.trino.spi.connector.SaveMode;
+import io.trino.spi.connector.SchemaNotFoundException;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SchemaTablePrefix;
+import io.trino.spi.connector.ViewNotFoundException;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.security.TrinoPrincipal;
@@ -82,14 +84,15 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.trino.spi.StandardErrorCode.ALREADY_EXISTS;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.connector.RowChangeParadigm.DELETE_ROW_AND_INSERT_ROW;
 import static io.trino.spi.type.DateTimeEncoding.unpackMillisUtc;
@@ -485,12 +488,16 @@ public class TrinoMetadata implements ConnectorMetadata {
     @Override
     public List<SchemaTableName> listTables(ConnectorSession session, Optional<String> schemaName) {
         catalog.initSession(session);
-        List<SchemaTableName> tables = new ArrayList<>();
+        Set<SchemaTableName> relations = new LinkedHashSet<>();
         schemaName
                 .map(Collections::singletonList)
                 .orElseGet(catalog::listDatabases)
-                .forEach(schema -> tables.addAll(listTables(schema)));
-        return tables;
+                .forEach(
+                        schema -> {
+                            relations.addAll(listTables(schema));
+                            relations.addAll(listViews(schema));
+                        });
+        return new ArrayList<>(relations);
     }
 
     private List<SchemaTableName> listTables(String schema) {
@@ -499,7 +506,7 @@ public class TrinoMetadata implements ConnectorMetadata {
                     .map(table -> new SchemaTableName(schema, table))
                     .collect(toList());
         } catch (Catalog.DatabaseNotExistException e) {
-            throw new RuntimeException(e);
+            return List.of();
         }
     }
 
@@ -598,18 +605,25 @@ public class TrinoMetadata implements ConnectorMetadata {
     public Map<SchemaTableName, List<ColumnMetadata>> listTableColumns(
             ConnectorSession session, SchemaTablePrefix prefix) {
         requireNonNull(prefix, "prefix is null");
-        List<SchemaTableName> tableNames;
+        catalog.initSession(session);
+        List<SchemaTableName> tableNames = new ArrayList<>();
         if (prefix.getTable().isPresent()) {
-            tableNames = Collections.singletonList(prefix.toSchemaTableName());
+            tableNames.add(prefix.toSchemaTableName());
         } else {
-            tableNames = listTables(session, prefix.getSchema());
+            prefix.getSchema()
+                    .map(Collections::singletonList)
+                    .orElseGet(catalog::listDatabases)
+                    .forEach(schema -> tableNames.addAll(listTables(schema)));
         }
 
-        return tableNames.stream()
-                .collect(
-                        toMap(
-                                Function.identity(),
-                                table -> getTableHandle(session, table).columnMetadatas(catalog)));
+        Map<SchemaTableName, List<ColumnMetadata>> columns = new HashMap<>();
+        for (SchemaTableName tableName : tableNames) {
+            TrinoTableHandle tableHandle = getTableHandle(session, tableName);
+            if (tableHandle != null) {
+                columns.put(tableName, tableHandle.columnMetadatas(catalog));
+            }
+        }
+        return columns;
     }
 
     @Override
@@ -776,20 +790,6 @@ public class TrinoMetadata implements ConnectorMetadata {
     }
 
     @Override
-    public Map<SchemaTableName, ConnectorViewDefinition> getViews(
-            ConnectorSession session, Optional<String> schemaName) {
-        Map<SchemaTableName, ConnectorViewDefinition> views = new HashMap<>();
-        listViews(session, schemaName)
-                .forEach(
-                        viewName ->
-                                getView(session, viewName)
-                                        .ifPresent(
-                                                viewDefinition ->
-                                                        views.put(viewName, viewDefinition)));
-        return views;
-    }
-
-    @Override
     public List<SchemaTableName> listViews(ConnectorSession session, Optional<String> schemaName) {
         catalog.initSession(session);
         List<SchemaTableName> views = new ArrayList<>();
@@ -806,7 +806,7 @@ public class TrinoMetadata implements ConnectorMetadata {
                     .map(view -> new SchemaTableName(schema, view))
                     .collect(toList());
         } catch (Catalog.DatabaseNotExistException e) {
-            throw new RuntimeException(e);
+            return List.of();
         }
     }
 
@@ -833,13 +833,12 @@ public class TrinoMetadata implements ConnectorMetadata {
                     TrinoViewUtils.toPaimonView(identifier, definition, typeManager),
                     false);
         } catch (Catalog.DatabaseNotExistException e) {
-            throw new RuntimeException(
-                    format("database not exists: '%s'", viewName.getSchemaName()));
+            throw new SchemaNotFoundException(viewName.getSchemaName(), e);
         } catch (Catalog.ViewAlreadyExistException e) {
-            throw new RuntimeException(
-                    format("view already existed: '%s'", viewName.getTableName()));
+            throw new TrinoException(
+                    ALREADY_EXISTS, format("View already exists: '%s'", viewName), e);
         } catch (Catalog.ViewNotExistException e) {
-            throw new RuntimeException(format("view not exists: '%s'", viewName.getTableName()));
+            throw new ViewNotFoundException(viewName, e);
         }
     }
 
@@ -848,9 +847,9 @@ public class TrinoMetadata implements ConnectorMetadata {
         try {
             catalog.initSession(session);
             catalog.dropView(
-                    new Identifier(viewName.getSchemaName(), viewName.getTableName()), false);
+                    Identifier.create(viewName.getSchemaName(), viewName.getTableName()), false);
         } catch (Catalog.ViewNotExistException e) {
-            throw new RuntimeException(format("view not exists: '%s'", viewName.getTableName()));
+            throw new ViewNotFoundException(viewName, e);
         }
     }
 }

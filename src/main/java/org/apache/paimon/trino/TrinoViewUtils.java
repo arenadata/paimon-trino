@@ -42,6 +42,8 @@ public final class TrinoViewUtils {
     private static final String TRINO_DIALECT = "trino";
     private static final String OPTION_OWNER = "trino.view.owner";
     private static final String OPTION_RUN_AS_INVOKER = "trino.view.run_as_invoker";
+    private static final String OPTION_CATALOG = "trino.view.catalog";
+    private static final String OPTION_SCHEMA = "trino.view.schema";
 
     private TrinoViewUtils() {}
 
@@ -58,10 +60,6 @@ public final class TrinoViewUtils {
                                 index -> {
                                     ConnectorViewDefinition.ViewColumn column = columns.get(index);
                                     Type trinoType = typeManager.getType(column.getType());
-                                    if (trinoType == null) {
-                                        trinoType =
-                                                typeManager.fromSqlType(column.getType().getId());
-                                    }
                                     return new DataField(
                                             index,
                                             column.getName(),
@@ -77,6 +75,8 @@ public final class TrinoViewUtils {
         Map<String, String> options = new HashMap<>();
         definition.getOwner().ifPresent(owner -> options.put(OPTION_OWNER, owner));
         options.put(OPTION_RUN_AS_INVOKER, String.valueOf(definition.isRunAsInvoker()));
+        definition.getCatalog().ifPresent(catalog -> options.put(OPTION_CATALOG, catalog));
+        definition.getSchema().ifPresent(schema -> options.put(OPTION_SCHEMA, schema));
 
         return new ViewImpl(
                 identifier,
@@ -113,11 +113,16 @@ public final class TrinoViewUtils {
         if (runAsInvoker) {
             owner = Optional.empty();
         }
+        Optional<String> catalog = Optional.ofNullable(view.options().get(OPTION_CATALOG));
+        Optional<String> schema =
+                catalog.isPresent()
+                        ? Optional.ofNullable(view.options().get(OPTION_SCHEMA))
+                        : Optional.empty();
 
         return new ConnectorViewDefinition(
                 originalSql,
-                Optional.empty(),
-                Optional.empty(),
+                catalog,
+                schema,
                 columns,
                 view.comment(),
                 owner,

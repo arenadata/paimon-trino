@@ -388,6 +388,7 @@ under the License.
                                     <groupId>org.apache.hive</groupId>
                                     <artifactId>hive-exec</artifactId>
                                     <version>${hive.metastore.version}</version>
+                                    <classifier>core</classifier>
                                     <type>jar</type>
                                     <outputDirectory>${project.build.directory}/hive-compat</outputDirectory>
                                 </artifactItem>
