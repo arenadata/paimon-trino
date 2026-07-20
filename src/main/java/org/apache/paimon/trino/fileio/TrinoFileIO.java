@@ -28,6 +28,7 @@ import org.apache.paimon.fs.TwoPhaseOutputStream;
 
 import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
+import io.trino.filesystem.FileMayHaveAlreadyExistedException;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoInputFile;
@@ -37,6 +38,7 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.Serial;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.util.ArrayList;
 import java.util.List;
@@ -194,11 +196,15 @@ public class TrinoFileIO implements FileIO {
             return FileIO.super.tryToWriteAtomic(path, content);
         }
 
+        TrinoOutputFile trinoOutputFile =
+                trinoFileSystem.newOutputFile(Location.of(path.toString()));
         try {
-            writeFile(path, content, false);
+            trinoOutputFile.createExclusive(content.getBytes(StandardCharsets.UTF_8));
             return true;
-        } catch (FileAlreadyExistsException e) {
+        } catch (FileAlreadyExistsException | FileMayHaveAlreadyExistedException e) {
             return false;
+        } catch (UnsupportedOperationException e) {
+            return FileIO.super.tryToWriteAtomic(path, content);
         }
     }
 
@@ -281,7 +287,7 @@ public class TrinoFileIO implements FileIO {
 
         private final Path targetPath;
 
-        public ObjectStoreFileCommitter(Path targetPath) {
+        private ObjectStoreFileCommitter(Path targetPath) {
             this.targetPath = targetPath;
         }
 
@@ -300,7 +306,9 @@ public class TrinoFileIO implements FileIO {
         }
 
         @Override
-        public void clean(FileIO fileIO) {}
+        public void clean(FileIO fileIO) {
+            // No temporary files are created for this committer.
+        }
 
         @Override
         public Path targetPath() {
