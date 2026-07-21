@@ -24,9 +24,11 @@ import org.apache.paimon.fs.FileStatus;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.PositionOutputStream;
 import org.apache.paimon.fs.SeekableInputStream;
+import org.apache.paimon.fs.TwoPhaseOutputStream;
 
 import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
+import io.trino.filesystem.FileMayHaveAlreadyExistedException;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoInputFile;
@@ -35,13 +37,14 @@ import io.trino.filesystem.TrinoOutputFile;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.io.Serial;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.util.ArrayList;
 import java.util.List;
 
 /** Trino file io for paimon. */
 public class TrinoFileIO implements FileIO {
-
     private final TrinoFileSystem trinoFileSystem;
     private final boolean objectStore;
 
@@ -78,6 +81,15 @@ public class TrinoFileIO implements FileIO {
             }
             throw e;
         }
+    }
+
+    @Override
+    public TwoPhaseOutputStream newTwoPhaseOutputStream(Path path, boolean overwrite)
+            throws IOException {
+        if (!objectStore) {
+            return FileIO.super.newTwoPhaseOutputStream(path, overwrite);
+        }
+        return new ObjectStoreTwoPhaseOutputStream(this, path, overwrite);
     }
 
     @Override
@@ -161,12 +173,6 @@ public class TrinoFileIO implements FileIO {
     }
 
     @Override
-    public boolean mkdirs(Path path) throws IOException {
-        trinoFileSystem.createDirectory(Location.of(path.toString()));
-        return true;
-    }
-
-    @Override
     public boolean rename(Path source, Path target) throws IOException {
         Location sourceLocation = Location.of(source.toString());
         Location targetLocation = Location.of(target.toString());
@@ -178,6 +184,30 @@ public class TrinoFileIO implements FileIO {
         return true;
     }
 
+    @Override
+    public boolean mkdirs(Path path) throws IOException {
+        trinoFileSystem.createDirectory(Location.of(path.toString()));
+        return true;
+    }
+
+    @Override
+    public boolean tryToWriteAtomic(Path path, String content) throws IOException {
+        if (!objectStore) {
+            return FileIO.super.tryToWriteAtomic(path, content);
+        }
+
+        TrinoOutputFile trinoOutputFile =
+                trinoFileSystem.newOutputFile(Location.of(path.toString()));
+        try {
+            trinoOutputFile.createExclusive(content.getBytes(StandardCharsets.UTF_8));
+            return true;
+        } catch (FileAlreadyExistsException | FileMayHaveAlreadyExistedException e) {
+            return false;
+        } catch (UnsupportedOperationException e) {
+            return FileIO.super.tryToWriteAtomic(path, content);
+        }
+    }
+
     private static boolean checkObjectStore(String scheme) {
         scheme = scheme.toLowerCase();
         if (!scheme.startsWith("s3")
@@ -187,6 +217,102 @@ public class TrinoFileIO implements FileIO {
             return scheme.startsWith("http") || scheme.startsWith("ftp");
         } else {
             return true;
+        }
+    }
+
+    private static class ObjectStoreTwoPhaseOutputStream extends TwoPhaseOutputStream {
+
+        private final Path targetPath;
+        private final PositionOutputStream outputStream;
+        private boolean closed;
+
+        private ObjectStoreTwoPhaseOutputStream(FileIO fileIO, Path targetPath, boolean overwrite)
+                throws IOException {
+            if (!overwrite && fileIO.exists(targetPath)) {
+                throw new IOException("File " + targetPath + " already exists.");
+            }
+
+            Path parentPath = targetPath.getParent();
+            if (parentPath != null && !fileIO.exists(parentPath)) {
+                fileIO.mkdirs(parentPath);
+            }
+
+            this.targetPath = targetPath;
+            this.outputStream = fileIO.newOutputStream(targetPath, overwrite);
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            outputStream.write(b);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            outputStream.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            outputStream.write(b, off, len);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            outputStream.flush();
+        }
+
+        @Override
+        public long getPos() throws IOException {
+            return outputStream.getPos();
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (!closed) {
+                closed = true;
+                outputStream.close();
+            }
+        }
+
+        @Override
+        public Committer closeForCommit() throws IOException {
+            close();
+            return new ObjectStoreFileCommitter(targetPath);
+        }
+    }
+
+    private static class ObjectStoreFileCommitter implements TwoPhaseOutputStream.Committer {
+
+        @Serial private static final long serialVersionUID = 1L;
+
+        private final Path targetPath;
+
+        private ObjectStoreFileCommitter(Path targetPath) {
+            this.targetPath = targetPath;
+        }
+
+        @Override
+        public void commit(FileIO fileIO) throws IOException {
+            if (!fileIO.exists(targetPath)) {
+                throw new IOException("File " + targetPath + " does not exist.");
+            }
+        }
+
+        @Override
+        public void discard(FileIO fileIO) throws IOException {
+            if (fileIO.exists(targetPath)) {
+                fileIO.deleteQuietly(targetPath);
+            }
+        }
+
+        @Override
+        public void clean(FileIO fileIO) {
+            // No temporary files are created for this committer.
+        }
+
+        @Override
+        public Path targetPath() {
+            return targetPath;
         }
     }
 }
