@@ -27,8 +27,8 @@ under the License.
         <version>1.4.1</version>
     </parent>
 
-    <artifactId>paimon-trino-${trino.version}</artifactId>
-    <name>Paimon : Trino : ${trino.version}</name>
+    <artifactId>paimon-trino-481</artifactId>
+    <name>Paimon : Trino : 481</name>
 
     <scm>
         <url>https://github.com/apache/paimon-trino</url>
@@ -40,11 +40,11 @@ under the License.
         <paimon.version>1.4.1</paimon.version>
         <target.java.version>25</target.java.version>
         <jdk.test.version>25</jdk.test.version>
-        <trino.version>481</trino.version>
+        <trino.version>481.1-4.3.0-4</trino.version>
         <airlift.version>424</airlift.version>
         <slice.version>2.7</slice.version>
         <maven.toolchains.plugin.version>3.1.0</maven.toolchains.plugin.version>
-        <hadoop.apache.version>3.3.5-3</hadoop.apache.version>
+        <hadoop.apache.version>3.4.3.1-4.3.0-3</hadoop.apache.version>
         <junit5.version>5.8.1</junit5.version>
         <slf4j.version>2.0.13</slf4j.version>
         <guava.version>31.1-jre</guava.version>
@@ -103,7 +103,7 @@ under the License.
             <groupId>io.trino</groupId>
             <artifactId>trino-hdfs</artifactId>
             <version>${trino.version}</version>
-            <scope>provided</scope>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
@@ -313,27 +313,63 @@ under the License.
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>filter-trino-hdfs-runtime-pom</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/trino-hdfs-runtime</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/assembly/trino-hdfs-runtime</directory>
+                                    <filtering>true</filtering>
+                                    <includes>
+                                        <include>pom.xml</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-trino-hdfs-runtime</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${maven.home}/bin/mvn</executable>
+                            <arguments>
+                                <argument>-f</argument>
+                                <argument>${project.build.directory}/trino-hdfs-runtime/pom.xml</argument>
+                                <argument>-q</argument>
+                                <argument>dependency:copy-dependencies</argument>
+                                <argument>-DoutputDirectory=${project.build.directory}/trino-hdfs-zip/hdfs</argument>
+                                <argument>-DincludeScope=runtime</argument>
+                                <argument>-DexcludeTransitive=false</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <version>3.8.1</version>
                 <executions>
-                    <execution>
-                        <id>copy-trino-hdfs-deps</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>copy</goal>
-                        </goals>
-                        <configuration>
-                            <artifactItems>
-                                <artifactItem>
-                                    <groupId>io.trino</groupId>
-                                    <artifactId>trino-hdfs</artifactId>
-                                    <version>${trino.version}</version>
-                                    <type>jar</type>
-                                    <outputDirectory>${project.build.directory}/trino-hdfs-zip/hdfs</outputDirectory>
-                                </artifactItem>
-                            </artifactItems>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>copy-hive-compat-deps</id>
                         <phase>prepare-package</phase>
