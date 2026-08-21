@@ -457,10 +457,22 @@ under the License.
             </plugin>
         </plugins>
     </build>
+
+    <repositories>
+        <repository>
+            <id>arenadata</id>
+            <url>https://maven.pkg.github.com/arenadata/*</url>
+        </repository>
+    </repositories>
+
     <profiles>
         <profile>
             <id>apache-build</id>
             <repositories>
+                <repository>
+                    <id>arenadata</id>
+                    <url>https://maven.pkg.github.com/arenadata/*</url>
+                </repository>
                 <repository>
                     <id>central</id>
                     <url>https://repo.maven.apache.org/maven2</url>
