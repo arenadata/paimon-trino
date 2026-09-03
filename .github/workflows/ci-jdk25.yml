@@ -17,10 +17,6 @@ name: Java 25 Build
 
 on: [push, pull_request]
 
-permissions:
-  contents: read
-  packages: read
-
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -28,10 +24,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Setup Maven
-        uses: ./.github/actions/setup-maven
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: 25
+          cache: maven
       - name: Set up Toolchain
         shell: bash
         run: |
@@ -52,7 +50,5 @@ jobs:
           </toolchains>
           EOF
       - name: Build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mvn clean compile -DskipTests -P '!toolchain' -Papache-build
+          mvn clean install -DskipTests -P '!toolchain' -Papache-build
