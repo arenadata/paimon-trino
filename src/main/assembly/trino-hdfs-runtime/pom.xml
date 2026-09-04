@@ -38,19 +38,15 @@ under the License.
 
     <repositories>
         <repository>
-            <id>arenadata-public</id>
-            <name>Arenadata Public Maven</name>
-            <url>https://maven.arenadata.io/public</url>
+            <id>arenadata</id>
+            <name>Arenadata Maven</name>
+            <url>https://maven.arenadata.io/arenadata</url>
             <releases>
                 <enabled>true</enabled>
             </releases>
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
-        </repository>
-        <repository>
-            <id>arenadata</id>
-            <url>https://maven.pkg.github.com/arenadata/*</url>
         </repository>
     </repositories>
 </project>
