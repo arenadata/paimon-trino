@@ -38,6 +38,13 @@ under the License.
 
     <repositories>
         <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
             <id>arenadata-public</id>
             <name>Arenadata Public Maven</name>
             <url>https://maven.arenadata.io/public</url>

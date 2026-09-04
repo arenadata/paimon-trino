@@ -460,6 +460,13 @@ under the License.
 
     <repositories>
         <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
             <id>arenadata-public</id>
             <name>Arenadata Public Maven</name>
             <url>https://maven.arenadata.io/public</url>
@@ -488,28 +495,6 @@ under the License.
             <id>apache-build</id>
             <repositories>
                 <repository>
-                    <id>arenadata-public</id>
-                    <name>Arenadata Public Maven</name>
-                    <url>https://maven.arenadata.io/public</url>
-                    <releases>
-                        <enabled>true</enabled>
-                    </releases>
-                    <snapshots>
-                        <enabled>false</enabled>
-                    </snapshots>
-                </repository>
-                <repository>
-                    <id>arenadata</id>
-                    <name>Arenadata Maven</name>
-                    <url>https://maven.arenadata.io/arenadata</url>
-                    <releases>
-                        <enabled>true</enabled>
-                    </releases>
-                    <snapshots>
-                        <enabled>false</enabled>
-                    </snapshots>
-                </repository>
-                <repository>
                     <id>central</id>
                     <url>https://repo.maven.apache.org/maven2</url>
                     <snapshots>
@@ -531,6 +516,28 @@ under the License.
                     <releases>
                         <enabled>false</enabled>
                     </releases>
+                </repository>
+                <repository>
+                    <id>arenadata-public</id>
+                    <name>Arenadata Public Maven</name>
+                    <url>https://maven.arenadata.io/public</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+                <repository>
+                    <id>arenadata</id>
+                    <name>Arenadata Maven</name>
+                    <url>https://maven.arenadata.io/arenadata</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
                 </repository>
             </repositories>
         </profile>
