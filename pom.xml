@@ -56,7 +56,18 @@ under the License.
         <spotless.delimiter>package</spotless.delimiter>
         <hive.metastore.version>3.1.3</hive.metastore.version>
         <hive.storage.api.version>2.7.0</hive.storage.api.version>
+        <libthrift.version>0.23.0</libthrift.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.thrift</groupId>
+                <artifactId>libthrift</artifactId>
+                <version>${libthrift.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -367,6 +378,27 @@ under the License.
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>clean-hive-compat</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <delete dir="${project.build.directory}/hive-compat" quiet="true"/>
+                                <mkdir dir="${project.build.directory}/hive-compat"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <version>3.8.1</version>
                 <executions>
@@ -388,7 +420,7 @@ under the License.
                                 <artifactItem>
                                     <groupId>org.apache.thrift</groupId>
                                     <artifactId>libthrift</artifactId>
-                                    <version>0.9.3</version>
+                                    <version>${libthrift.version}</version>
                                     <type>jar</type>
                                     <outputDirectory>${project.build.directory}/hive-compat</outputDirectory>
                                 </artifactItem>

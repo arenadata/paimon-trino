@@ -51,6 +51,7 @@
             <useProjectArtifact>false</useProjectArtifact>
             <excludes>
                 <exclude>io.trino:trino-hdfs</exclude>
+                <exclude>org.apache.thrift:libthrift</exclude>
             </excludes>
         </dependencySet>
     </dependencySets>
